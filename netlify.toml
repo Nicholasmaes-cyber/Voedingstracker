@@ -1,0 +1,14 @@
+[build]
+  functions = "netlify/functions"
+
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+```
+
+4. Klik **"Commit changes"**
+
+Wacht ~1 minuut en probeer dan opnieuw:
+```
+https://voedingstracker.netlify.app/.netlify/functions/claude
