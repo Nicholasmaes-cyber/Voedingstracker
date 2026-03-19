@@ -29,7 +29,7 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 // ── storage (localStorage) ────────────────────────────────────────────────────
 function sget(key, def) {
@@ -54,11 +54,8 @@ const VITS = {
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function searchProductNutrition(query) {
-  const res = await fetch("/.netlify/functions/claude", {
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-    },
+  const res = await fetch("/api/claude", {
+    method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
       model:"claude-sonnet-4-20250514", max_tokens:1000,
       tools:[{type:"web_search_20250305",name:"web_search"}],
@@ -574,6 +571,72 @@ function ProgressView({logs,progressCfg,onChangeCfg,getBurned}){
   );
 }
 
+// ── BackupRestore ─────────────────────────────────────────────────────────────
+function BackupRestore({onImport}) {
+  const [msg, setMsg] = useState(null);
+  const fileRef = useRef();
+
+  const exportData = () => {
+    const data = {
+      products: sget(SK.products, []),
+      logs: sget(SK.logs, {}),
+      goals: sget(SK.goals, DEF_GOALS),
+      progress: sget(SK.progress, DEF_PROG),
+      exportDate: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nutritrack-backup-${todayStr()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMsg({t:"ok", msg:"✅ Backup gedownload!"});
+    setTimeout(() => setMsg(null), 3000);
+  };
+
+  const importData = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.products || !data.logs) throw new Error("Ongeldig bestand");
+        sset(SK.products, data.products);
+        sset(SK.logs, data.logs);
+        if (data.goals) sset(SK.goals, data.goals);
+        if (data.progress) sset(SK.progress, data.progress);
+        onImport();
+        setMsg({t:"ok", msg:`✅ ${data.products.length} producten en logs hersteld!`});
+      } catch {
+        setMsg({t:"err", msg:"❌ Ongeldig bestand. Gebruik een NutriTrack backup."});
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  return (
+    <div style={{background:"#1e293b", borderRadius:12, padding:16, marginBottom:14}}>
+      <p style={{margin:"0 0 12px", fontWeight:600, fontSize:14}}>💾 Backup & Herstel</p>
+      <p style={{margin:"0 0 12px", fontSize:13, color:"#94a3b8"}}>
+        Download regelmatig een backup zodat je je data nooit kwijt bent bij updates.
+      </p>
+      <div style={{display:"flex", gap:8}}>
+        <button onClick={exportData} style={{...B("#22c55e", {flex:1, fontSize:13, padding:"10px 8px"})}}>
+          ⬇️ Download backup
+        </button>
+        <button onClick={() => fileRef.current.click()} style={{...B("#6366f1", {flex:1, fontSize:13, padding:"10px 8px"})}}>
+          ⬆️ Herstel backup
+        </button>
+      </div>
+      <input ref={fileRef} type="file" accept=".json" style={{display:"none"}} onChange={importData}/>
+      {msg && <p style={{margin:"8px 0 0", fontSize:13, color:msg.t==="ok"?"#22c55e":"#ef4444"}}>{msg.msg}</p>}
+    </div>
+  );
+}
+
 // ── Goals ─────────────────────────────────────────────────────────────────────
 function Goals({goals,onChange}){
   const rows=[
@@ -694,7 +757,17 @@ function App(){
           onAdd={()=>{setAddPrefill("");setShowAdd(true);}}
           onDelete={id=>saveProducts(products.filter(p=>p.id!==id))}
           onSave={updated=>saveProducts(products.map(p=>p.id===updated.id?updated:p))}/>}
-        {tab==="goals"&&<Goals goals={goals} onChange={saveGoals}/>}
+        {tab==="goals"&&(
+          <div>
+            <BackupRestore onImport={()=>{
+              setProducts(sget(SK.products,[]));
+              setLogs(sget(SK.logs,{}));
+              setGoals(sget(SK.goals,DEF_GOALS));
+              setProgCfg(sget(SK.progress,DEF_PROG));
+            }}/>
+            <Goals goals={goals} onChange={saveGoals}/>
+          </div>
+        )}
       </div>
     </div>
   );
